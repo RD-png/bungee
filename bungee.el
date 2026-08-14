@@ -31,13 +31,6 @@ Each element is a plist; see `bungee--history-item'.")
 (defvar bungee--history-max-length 100
   "Maximum number of items to keep in `bungee--history'.")
 
-(defvar bungee--save-before-advised nil
-  "Functions we have advised via `bungee-set-hooks'.")
-
-;; `vertico-sort-function' is defined in vertico.el.  Declare it here
-;; so `bungee-history' can bind it without requiring Vertico.
-(defvar vertico-sort-function nil)
-
 (defvar bungee-save-before-functions
   '(xref-find-definitions
     xref-find-references
@@ -54,39 +47,31 @@ line (e.g., jumping to a definition).  Set this and call
 
 ;;; Advice
 
-(defun bungee--save-before-advice (&rest _)
-  "Call `bungee-add' to save the current position.
+(defun bungee--add-advice (&rest _)
+  "Call `bungee-add' as a `:before' advice.
 
-Used as `:before' advice on the functions in
-`bungee-save-before-functions'.  Ignores the arguments, since
-`:before' advice is invoked with the advised function's arguments."
+The arguments are ignored: `:before' advice is invoked with the
+advised command's arguments.  This function must not be
+interactive, since `call-interactively' would otherwise substitute
+its interactive spec for the advised command's."
   (bungee-add))
 
 (defun bungee--advise (fn)
-  "Attach `bungee--save-before-advice' to FN.
+  "Attach `bungee--add-advice' as `:before' advice to FN.
 
-FN is recorded in `bungee--save-before-advised' so that
-`bungee-set-hooks' can remove the advice if FN is later dropped
-from `bungee-save-before-functions'."
-  (unless (advice-member-p #'bungee--save-before-advice fn)
-    (advice-add fn :before #'bungee--save-before-advice))
-  (unless (memq fn bungee--save-before-advised)
-    (push fn bungee--save-before-advised)))
+FN is left untouched if it already carries the advice, so
+`bungee-set-hooks' is safe to call repeatedly."
+  (unless (advice-member-p #'bungee--add-advice fn)
+    (advice-add fn :before #'bungee--add-advice)))
 
 (defun bungee-set-hooks ()
-  "Synchronize advice with `bungee-save-before-functions'.
+  "Advise every function in `bungee-save-before-functions'.
 
-Adds `bungee--save-before-advice' to every listed function and
-removes it from functions that were advised but are no longer
-listed.  Functions that are still autoload stubs are deferred via
+Functions that are still autoload stubs are deferred via
 `with-eval-after-load' until their library loads, because advising
 an interactive autoload stub corrupts its argument handling:
 `call-interactively' would invoke it with zero arguments."
   (interactive)
-  (dolist (fn bungee--save-before-advised)
-    (unless (memq fn bungee-save-before-functions)
-      (advice-remove fn #'bungee--save-before-advice)))
-  (setq bungee--save-before-advised nil)
   (dolist (fn bungee-save-before-functions)
     (let ((def (and (fboundp fn) (symbol-function fn))))
       (if (autoloadp def)
@@ -255,13 +240,14 @@ the saved position, and recenters."
   (unless bungee--history
     (user-error "No history items saved yet"))
   (let* ((alist (bungee--history-alist))
-         (old-sort (symbol-value 'vertico-sort-function))
-         (choice (progn
-                   (when (bound-and-true-p vertico-mode)
-                     (setq vertico-sort-function #'identity))
-                   (unwind-protect
-                       (completing-read "Bungee to: " alist nil t)
-                     (setq vertico-sort-function old-sort)))))
+         (choice (if (bound-and-true-p vertico-mode)
+                     (with-no-warnings
+                       (let ((old-sort (symbol-value 'vertico-sort-function)))
+                         (set 'vertico-sort-function #'identity)
+                         (unwind-protect
+                             (completing-read "Bungee to: " alist nil t)
+                           (set 'vertico-sort-function old-sort))))
+                   (completing-read "Bungee to: " alist nil t))))
     (when choice
       (let* ((item (cdr (assoc choice alist)))
              (buffer (plist-get item :buffer))
