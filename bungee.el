@@ -31,6 +31,7 @@ Each element is a plist; see `bungee--history-item'.")
 (defvar bungee--history-max-length 100
   "Maximum number of items to keep in `bungee--history'.")
 
+;;;###autoload
 (defvar bungee-save-before-functions
   '(xref-find-definitions
     xref-find-references
@@ -38,12 +39,12 @@ Each element is a plist; see `bungee--history-item'.")
   "Functions advised to save the current position before running.
 
 These default to commands that move the user away from the current
-line (e.g., jumping to a definition).  Set this and call
-`bungee-set-hooks' to (re)apply the advice:
-
-  (setq bungee-save-before-functions
-        \\='(xref-find-definitions imenu))
-  (bungee-set-hooks)")
+line (e.g., jumping to a definition).  Set this variable before
+loading bungee -- for example in the `:init' section of a
+`use-package' form -- since `bungee-set-hooks' runs when the
+library loads and applies whatever list is in effect then.  If you
+change the variable afterwards, call `bungee-set-hooks' to re-apply
+the advice.")
 
 ;;; Advice
 
